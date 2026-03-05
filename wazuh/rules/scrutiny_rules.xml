@@ -1,0 +1,216 @@
+<!--
+  scrutiny_rules.xml - Wazuh alert rules for Scrutiny syscall telemetry
+
+  Rule ID range: 200100 - 200199 (local custom range, adjust if conflict)
+
+  Alert level mapping (mirrors Scrutiny risk tiers):
+    CRITICAL  -> level 12  (high priority, immediate action)
+    HIGH      -> level 9   (suspicious, investigate)
+    MEDIUM    -> level 6   (informational, baseline deviation)
+    LOW       -> level 3   (noise filter / audit trail)
+
+  MITRE ATT&CK mappings are applied at the CRITICAL tier.
+
+  Deployment:
+    cp scrutiny_rules.xml /var/ossec/etc/rules/
+    systemctl restart wazuh-manager
+
+  Verify with:
+    /var/ossec/bin/ossec-logtest
+
+  Part of the Scrutiny project - HoneyBadger Vanguard fork.
+  https://github.com/MoSLoF/Scrutiny
+-->
+
+<group name="scrutiny,syscall,">
+
+  <!-- =========================================================
+       BASE RULE - matches all Scrutiny decoder events
+       ========================================================= -->
+  <rule id="200100" level="0">
+    <decoded_as>scrutiny</decoded_as>
+    <description>Scrutiny: syscall event captured</description>
+    <group>scrutiny_base</group>
+  </rule>
+
+
+  <!-- =========================================================
+       LOW TIER - level 3 (audit trail)
+       ========================================================= -->
+  <rule id="200101" level="3">
+    <if_sid>200100</if_sid>
+    <field name="data.risk_tier">^LOW$</field>
+    <description>Scrutiny: LOW risk syscall - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <group>scrutiny_low</group>
+  </rule>
+
+
+  <!-- =========================================================
+       MEDIUM TIER - level 6 (file I/O, process creation)
+       ========================================================= -->
+  <rule id="200102" level="6">
+    <if_sid>200100</if_sid>
+    <field name="data.risk_tier">^MEDIUM$</field>
+    <description>Scrutiny: MEDIUM risk syscall - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <group>scrutiny_medium</group>
+  </rule>
+
+
+  <!-- =========================================================
+       HIGH TIER - level 9 (privilege changes, suspicious ops)
+       ========================================================= -->
+  <rule id="200103" level="9">
+    <if_sid>200100</if_sid>
+    <field name="data.risk_tier">^HIGH$</field>
+    <description>Scrutiny: HIGH risk syscall - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <group>scrutiny_high</group>
+  </rule>
+
+
+  <!-- =========================================================
+       CRITICAL TIER - level 12 with MITRE ATT&CK mappings
+       ========================================================= -->
+
+  <!-- Generic CRITICAL catch-all (fires if no specific rule below matches) -->
+  <rule id="200110" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.risk_tier">^CRITICAL$</field>
+    <description>Scrutiny: CRITICAL risk syscall - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <group>scrutiny_critical</group>
+  </rule>
+
+  <!-- execve / execveat - Command execution
+       MITRE: T1059 - Command and Scripting Interpreter -->
+  <rule id="200111" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^execve$|^execveat$</field>
+    <description>Scrutiny: Process execution detected - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1059</id>
+    </mitre>
+    <group>scrutiny_critical,execution</group>
+  </rule>
+
+  <!-- connect - Outbound network connection (C2 recon / beacon)
+       MITRE: T1071 - Application Layer Protocol
+              T1071.001 - Web Protocols (generic outbound) -->
+  <rule id="200112" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^connect$</field>
+    <description>Scrutiny: Outbound connection attempt - connect() by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1071</id>
+      <id>T1071.001</id>
+    </mitre>
+    <group>scrutiny_critical,c2,network</group>
+  </rule>
+
+  <!-- sendto / sendmsg / sendmmsg - Active data exfiltration
+       MITRE: T1041 - Exfiltration Over C2 Channel -->
+  <rule id="200113" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^sendto$|^sendmsg$|^sendmmsg$</field>
+    <description>Scrutiny: Network data transmission - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1041</id>
+    </mitre>
+    <group>scrutiny_critical,exfiltration,network</group>
+  </rule>
+
+  <!-- ptrace - Process injection / debugging / anti-analysis
+       MITRE: T1055 - Process Injection -->
+  <rule id="200114" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^ptrace$</field>
+    <description>Scrutiny: ptrace detected - possible process injection by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1055</id>
+    </mitre>
+    <group>scrutiny_critical,injection</group>
+  </rule>
+
+  <!-- init_module / finit_module / delete_module - Kernel module manipulation
+       MITRE: T1547.006 - Boot or Logon Autostart: Kernel Modules and Extensions -->
+  <rule id="200115" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^init_module$|^finit_module$|^delete_module$</field>
+    <description>Scrutiny: Kernel module operation - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1547.006</id>
+    </mitre>
+    <group>scrutiny_critical,persistence,kernel</group>
+  </rule>
+
+  <!-- kexec_load / kexec_file_load - Kernel replacement / bootkit
+       MITRE: T1542.001 - Pre-OS Boot: System Firmware -->
+  <rule id="200116" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^kexec_load$|^kexec_file_load$</field>
+    <description>Scrutiny: kexec kernel load detected - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1542.001</id>
+    </mitre>
+    <group>scrutiny_critical,persistence,kernel</group>
+  </rule>
+
+  <!-- bpf - eBPF program load (rootkit / evasion vector)
+       MITRE: T1014 - Rootkit -->
+  <rule id="200117" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^bpf$</field>
+    <description>Scrutiny: BPF syscall detected - possible eBPF rootkit by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1014</id>
+    </mitre>
+    <group>scrutiny_critical,defense_evasion,rootkit</group>
+  </rule>
+
+  <!-- process_vm_writev - Cross-process memory write (injection)
+       MITRE: T1055.001 - Process Injection: Dynamic-link Library Injection -->
+  <rule id="200118" level="12">
+    <if_sid>200100</if_sid>
+    <field name="data.syscall_name">^process_vm_writev$</field>
+    <description>Scrutiny: Cross-process memory write - possible injection by $(data.process) [PID $(data.pid)]</description>
+    <mitre>
+      <id>T1055.001</id>
+    </mitre>
+    <group>scrutiny_critical,injection</group>
+  </rule>
+
+
+  <!-- =========================================================
+       FREQUENCY / VOLUME ALERTS
+       ========================================================= -->
+
+  <!-- Repeated CRITICAL syscalls within 60s - escalate to level 15 -->
+  <rule id="200120" level="15" frequency="5" timeframe="60">
+    <if_matched_sid>200110</if_matched_sid>
+    <same_field>data.process</same_field>
+    <description>Scrutiny: REPEATED CRITICAL syscalls (5+ in 60s) - $(data.syscall_name) by $(data.process) [PID $(data.pid)]</description>
+    <group>scrutiny_critical,high_frequency</group>
+  </rule>
+
+  <!-- Repeated connect() within 30s - C2 beacon pattern -->
+  <rule id="200121" level="15" frequency="3" timeframe="30">
+    <if_matched_sid>200112</if_matched_sid>
+    <same_field>data.process</same_field>
+    <description>Scrutiny: C2 BEACON PATTERN - $(data.process) [PID $(data.pid)] making repeated connect() calls</description>
+    <mitre>
+      <id>T1071</id>
+      <id>T1132</id>
+    </mitre>
+    <group>scrutiny_critical,c2,beacon</group>
+  </rule>
+
+  <!-- Repeated sendto() within 30s - active exfil stream -->
+  <rule id="200122" level="15" frequency="3" timeframe="30">
+    <if_matched_sid>200113</if_matched_sid>
+    <same_field>data.process</same_field>
+    <description>Scrutiny: EXFILTRATION STREAM - $(data.process) [PID $(data.pid)] repeated sendto()/sendmsg() calls</description>
+    <mitre>
+      <id>T1041</id>
+    </mitre>
+    <group>scrutiny_critical,exfiltration,high_frequency</group>
+  </rule>
+
+</group>

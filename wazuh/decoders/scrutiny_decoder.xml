@@ -1,0 +1,40 @@
+<!--
+  scrutiny_decoder.xml - Wazuh decoder for Scrutiny JSON Lines logs
+
+  Parses events from logs/<proc>/json/<timestamp>.jsonl produced by
+  the Scrutiny baseliner (HoneyBadger Vanguard fork).
+
+  JSON schema (one object per line):
+  {
+    "timestamp":    "2026-03-05T19:54:47Z",
+    "pid":          1089,
+    "process":      "targetProc2",
+    "syscall_num":  44,
+    "syscall_name": "sendto",
+    "risk_tier":    "CRITICAL",
+    "risk_score":   10
+  }
+
+  Deployment:
+    cp scrutiny_decoder.xml /var/ossec/etc/decoders/
+    systemctl restart wazuh-manager
+
+  Part of the Scrutiny project - HoneyBadger Vanguard fork.
+  https://github.com/MoSLoF/Scrutiny
+-->
+
+<decoder name="scrutiny">
+  <prematch>{"timestamp":</prematch>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>
+
+<!--
+  Field mappings after JSON_Decoder runs:
+    data.timestamp    -> ISO 8601 UTC event time
+    data.pid          -> traced process PID
+    data.process      -> process name (from /proc/<pid>/comm)
+    data.syscall_num  -> raw syscall number
+    data.syscall_name -> resolved syscall name
+    data.risk_tier    -> CRITICAL | HIGH | MEDIUM | LOW
+    data.risk_score   -> 10 | 7 | 3 | 1
+-->
