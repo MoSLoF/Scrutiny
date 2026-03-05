@@ -13,6 +13,7 @@
 
 #include "syscalls.h"
 #include <stddef.h>
+#include <string.h>
 
 const struct syscall_map syscall_table[] = {
     {    0, "read"                   },  /* Read from file descriptor */
@@ -364,4 +365,60 @@ const char *get_syscall_name(long syscall_num)
             return syscall_table[i].name;
     }
     return "unknown";
+}
+
+/* ---------------------------------------------------------------------------
+ * Risk scoring - mirrors the Python RISK_TABLE in monitor.py.
+ * Must be kept in sync with monitor.py RISK_TABLE when tiers are updated.
+ * --------------------------------------------------------------------------- */
+
+static const char *CRITICAL_SYSCALLS[] = {
+    "execve", "execveat", "connect", "sendto", "sendmsg", "sendmmsg",
+    "ptrace", "init_module", "finit_module", "delete_module",
+    "kexec_load", "kexec_file_load", "bpf", "process_vm_writev",
+    NULL
+};
+
+static const char *HIGH_SYSCALLS[] = {
+    "socket", "access", "faccessat", "chmod", "fchmod", "fchmodat",
+    "chown", "fchown", "lchown", "fchownat",
+    "kill", "tkill", "tgkill",
+    "setuid", "setgid", "setreuid", "setregid",
+    "setresuid", "setresgid", "setfsuid", "setfsgid",
+    "capset", "mount", "umount2", "chroot", "pivot_root",
+    "prctl", "seccomp",
+    NULL
+};
+
+static const char *MEDIUM_SYSCALLS[] = {
+    "open", "openat", "openat2", "read", "write",
+    "unlink", "unlinkat", "rename", "renameat", "renameat2",
+    "fork", "vfork", "clone",
+    "bind", "listen", "accept", "accept4",
+    NULL
+};
+
+static int name_in_list(const char *name, const char **list)
+{
+    for (int i = 0; list[i] != NULL; i++)
+        if (strcmp(name, list[i]) == 0) return 1;
+    return 0;
+}
+
+const char *get_risk_tier(const char *syscall_name)
+{
+    if (!syscall_name) return "LOW";
+    if (name_in_list(syscall_name, CRITICAL_SYSCALLS)) return "CRITICAL";
+    if (name_in_list(syscall_name, HIGH_SYSCALLS))     return "HIGH";
+    if (name_in_list(syscall_name, MEDIUM_SYSCALLS))   return "MEDIUM";
+    return "LOW";
+}
+
+int get_risk_score(const char *syscall_name)
+{
+    if (!syscall_name) return 1;
+    if (name_in_list(syscall_name, CRITICAL_SYSCALLS)) return 10;
+    if (name_in_list(syscall_name, HIGH_SYSCALLS))     return 7;
+    if (name_in_list(syscall_name, MEDIUM_SYSCALLS))   return 3;
+    return 1;
 }
