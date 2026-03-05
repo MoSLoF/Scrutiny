@@ -14,3 +14,5 @@ Makefile text eol=lf
 *.o     binary
 *.d     binary
 *.exe   binary
+
+*.xml text eol=lf
