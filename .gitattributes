@@ -1,0 +1,16 @@
+# Normalize line endings
+# Force LF for all source files regardless of OS
+* text=auto
+
+*.c     text eol=lf
+*.h     text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.sh    text eol=lf
+Makefile text eol=lf
+
+# Binary files - no line ending conversion
+*.o     binary
+*.d     binary
+*.exe   binary

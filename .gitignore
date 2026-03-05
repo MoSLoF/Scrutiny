@@ -1,3 +1,11 @@
+# Build artifacts
 bin/
+obj/
+
+# Runtime output
 payroll.log
 logs/
+employees.txt
+
+# Repo tooling (not part of the project itself)
+Scrutiny-GitSetup.ps1
