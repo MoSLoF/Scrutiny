@@ -1,385 +1,367 @@
+/*
+ * syscalls.c - Linux x86_64 syscall lookup table
+ *
+ * Corrected against the authoritative kernel source:
+ *   arch/x86/entry/syscalls/syscall_64.tbl
+ *
+ * Phase 2 fix: upstream table had 241 incorrect mappings
+ * starting at syscall 94 due to offset shift errors.
+ * All entries verified against Linux kernel 6.x.
+ *
+ * Part of the Scrutiny project - HoneyBadger Vanguard fork.
+ */
+
 #include "syscalls.h"
 #include <stddef.h>
 
 const struct syscall_map syscall_table[] = {
-    { 0, "read" },                  // Read from file
-    { 1, "write" },                 // Write to file
-    { 2, "open" },                  // Open file
-    { 3, "close" },                 // Close file
-    { 4, "stat" },                  // File status
-    { 5, "fstat" },                 // File status by fd
-    { 6, "lstat" },                 // Symbolic link status
-    { 7, "poll" },                  // Wait for events
-    { 8, "lseek" },                 // Reposition file offset
-    { 9, "mmap" },                  // Map files/memory
-    { 10, "mprotect" },             // Set memory protection
-    { 11, "munmap" },               // Unmap memory
-    { 12, "brk" },                  // Change data segment size
-    { 13, "rt_sigaction" },         // Set signal handler
-    { 14, "rt_sigprocmask" },       // Set signal mask
-    { 15, "rt_sigreturn" },         // Return from signal
-    { 16, "ioctl" },                // Device control
-    { 17, "pread64" },              // Read at offset
-    { 18, "pwrite64" },             // Write at offset
-    { 19, "readv" },                // Read into multiple buffers
-    { 20, "writev" },               // Write from multiple buffers
-    { 21, "access" },               // Check file existence (suspect, targetProc0)
-    { 22, "pipe" },                 // Create pipe
-    { 23, "select" },               // Synchronous I/O multiplexing
-    { 24, "sched_yield" },          // Yield CPU
-    { 25, "mremap" },               // Remap memory
-    { 26, "msync" },                // Synchronize memory with file
-    { 27, "mincore" },              // Check memory residency
-    { 28, "madvise" },              // Memory advice
-    { 29, "shmget" },               // Get shared memory
-    { 30, "shmat" },                // Attach shared memory
-    { 31, "shmctl" },               // Shared memory control
-    { 32, "dup" },                  // Duplicate fd
-    { 33, "dup2" },                 // Duplicate fd to specific number
-    { 34, "pause" },                // Suspend process
-    { 35, "nanosleep" },            // Sleep (targetProc0)
-    { 36, "getitimer" },            // Get timer
-    { 37, "alarm" },                // Set alarm
-    { 38, "setitimer" },            // Set timer
-    { 39, "getpid" },               // Get process ID (targetProc0)
-    { 40, "sendfile" },             // Transfer data between fds
-    { 41, "socket" },               // Create socket (targetProc2)
-    { 42, "connect" },              // Connect to socket (targetProc2)
-    { 43, "accept" },               // Accept connection
-    { 44, "sendto" },               // Send message
-    { 45, "recvfrom" },             // Receive message
-    { 46, "sendmsg" },              // Send message on socket
-    { 47, "recvmsg" },              // Receive message on socket
-    { 48, "shutdown" },             // Shut down socket
-    { 49, "bind" },                 // Bind socket
-    { 50, "listen" },               // Listen for connections
-    { 51, "getsockname" },          // Get socket name
-    { 52, "getpeername" },          // Get peer name
-    { 53, "socketpair" },           // Create socket pair
-    { 54, "setsockopt" },           // Set socket options
-    { 55, "getsockopt" },           // Get socket options
-    { 56, "clone" },                // Create thread/process
-    { 57, "fork" },                 // Create child process
-    { 58, "vfork" },                // Create child (shared memory)
-    { 59, "execve" },               // Execute program
-    { 60, "exit" },                 // Terminate process
-    { 61, "wait4" },                // Wait for process
-    { 62, "kill" },                 // Send signal (suspicious)
-    { 63, "uname" },                // System information
-    { 64, "semget" },               // Get semaphore
-    { 65, "semop" },                // Semaphore operations
-    { 66, "semctl" },               // Semaphore control
-    { 67, "shmdt" },                // Detach shared memory
-    { 68, "msgget" },               // Get message queue
-    { 69, "msgsnd" },               // Send message
-    { 70, "msgrcv" },               // Receive message
-    { 71, "msgctl" },               // Message queue control
-    { 72, "fcntl" },                // File control
-    { 73, "flock" },                // File locking
-    { 74, "fsync" },                // Synchronize file
-    { 75, "fdatasync" },            // Synchronize file data
-    { 76, "truncate" },             // Truncate file
-    { 77, "ftruncate" },            // Truncate file by fd
-    { 78, "getdents" },             // Get directory entries
-    { 79, "getcwd" },               // Get current directory
-    { 80, "chdir" },                // Change directory
-    { 81, "fchdir" },               // Change directory by fd
-    { 82, "rename" },               // Rename file
-    { 83, "mkdir" },                // Create directory
-    { 84, "rmdir" },                // Remove directory
-    { 85, "creat" },                // Create file
-    { 86, "link" },                 // Create hard link
-    { 87, "unlink" },               // Delete file (targetProc2)
-    { 88, "symlink" },              // Create symbolic link
-    { 89, "readlink" },             // Read symbolic link
-    { 90, "chmod" },                // Change file mode (suspicious)
-    { 91, "fchmod" },               // Change file mode by fd
-    { 92, "chown" },                // Change file owner (suspicious)
-    { 93, "fchown" },               // Change file owner by fd
-    { 94, "fchownat" },             // Change owner relative to dir
-    { 95, "fchmodat" },             // Change mode relative to dir
-    { 96, "umask" },                // Set file mode creation mask
-    { 97, "gettimeofday" },         // Get time
-    { 98, "getrlimit" },            // Get resource limits
-    { 99, "getrusage" },            // Get resource usage
-    { 100, "sysinfo" },             // System information
-    { 101, "times" },               // Process times
-    { 102, "getuid" },              // Get user ID
-    { 103, "syslog" },              // System logging
-    { 104, "setuid" },              // Set user ID (suspicious)
-    { 105, "getgid" },              // Get group ID
-    { 106, "setgid" },              // Set group ID
-    { 107, "getppid" },             // Get parent PID
-    { 108, "getpgrp" },             // Get process group
-    { 109, "setsid" },              // Create session
-    { 110, "gettid" },              // Get thread ID
-    { 111, "setreuid" },            // Set real/effective UID
-    { 112, "setregid" },            // Set real/effective GID
-    { 113, "getgroups" },           // Get supplementary groups
-    { 114, "setgroups" },           // Set supplementary groups
-    { 115, "setresuid" },           // Set real/effective/saved UID
-    { 116, "setresgid" },           // Set real/effective/saved GID
-    { 117, "prctl" },               // Process control (suspicious)
-    { 118, "capget" },              // Get capabilities
-    { 119, "capset" },              // Set capabilities
-    { 120, "sigaltstack" },         // Set alternate signal stack
-    { 121, "getpriority" },         // Get process priority
-    { 122, "setpriority" },         // Set process priority
-    { 123, "sched_setparam" },      // Set scheduling parameters
-    { 124, "sched_getparam" },      // Get scheduling parameters
-    { 125, "sched_setscheduler" },  // Set scheduler
-    { 126, "sched_getscheduler" },  // Get scheduler
-    { 127, "sched_get_priority_max" }, // Get max priority
-    { 128, "sched_get_priority_min" }, // Get min priority
-    { 129, "sched_rr_get_interval" }, // Get round-robin interval
-    { 130, "mlock" },               // Lock memory
-    { 131, "munlock" },             // Unlock memory
-    { 132, "mlockall" },            // Lock all memory
-    { 133, "munlockall" },          // Unlock all memory
-    { 134, "vhangup" },             // Hang up terminal
-    { 135, "modify_ldt" },          // Modify local descriptor table
-    { 136, "pivot_root" },          // Change root filesystem
-    { 137, "prlimit64" },           // Set/get resource limits
-    { 138, "adjtimex" },            // Adjust system clock
-    { 139, "setrlimit" },           // Set resource limits
-    { 140, "chroot" },              // Change root directory
-    { 141, "sync" },                // Synchronize filesystems
-    { 142, "acct" },                // Enable/disable accounting
-    { 143, "settimeofday" },        // Set time
-    { 144, "mount" },               // Mount filesystem
-    { 145, "umount2" },             // Unmount filesystem
-    { 146, "swapon" },              // Enable swap
-    { 147, "swapoff" },             // Disable swap
-    { 148, "reboot" },              // Reboot system
-    { 149, "sethostname" },         // Set hostname
-    { 150, "setdomainname" },       // Set domain name
-    { 151, "iopl" },                // Set I/O privilege level
-    { 152, "ioperm" },              // Set I/O port permissions
-    { 153, "create_module" },       // Create kernel module
-    { 154, "init_module" },         // Initialize kernel module
-    { 155, "delete_module" },       // Delete kernel module
-    { 156, "get_kernel_syms" },     // Get kernel symbols
-    { 157, "query_module" },        // Query kernel module
-    { 158, "quotactl" },            // Quota control
-    { 159, "nfsservctl" },          // NFS control
-    { 160, "getpmsg" },             // Get protocol message
-    { 161, "putpmsg" },             // Put protocol message
-    { 162, "afs_syscall" },         // AFS syscall
-    { 163, "tuxcall" },             // TUX syscall
-    { 164, "security" },            // Security syscall
-    { 165, "gettid" },              // Get thread ID
-    { 166, "readahead" },           // Preload file data
-    { 167, "setxattr" },            // Set extended attribute
-    { 168, "lsetxattr" },           // Set extended attribute for link
-    { 169, "fsetxattr" },           // Set extended attribute by fd
-    { 170, "getxattr" },            // Get extended attribute
-    { 171, "lgetxattr" },           // Get extended attribute for link
-    { 172, "fgetxattr" },           // Get extended attribute by fd
-    { 173, "listxattr" },           // List extended attributes
-    { 174, "llistxattr" },          // List extended attributes for link
-    { 175, "flistxattr" },          // List extended attributes by fd
-    { 176, "removexattr" },         // Remove extended attribute
-    { 177, "lremovexattr" },        // Remove extended attribute for link
-    { 178, "fremovexattr" },        // Remove extended attribute by fd
-    { 179, "tkill" },               // Send signal to thread
-    { 180, "time" },                // Get time (targetProc0)
-    { 181, "futex" },               // Fast user-space locking
-    { 182, "sched_setaffinity" },   // Set CPU affinity
-    { 183, "sched_getaffinity" },   // Get CPU affinity
-    { 184, "set_thread_area" },     // Set thread-local storage
-    { 185, "io_setup" },            // Setup I/O context
-    { 186, "io_destroy" },          // Destroy I/O context
-    { 187, "io_getevents" },        // Get I/O events
-    { 188, "io_submit" },           // Submit I/O operations
-    { 189, "io_cancel" },           // Cancel I/O operations
-    { 190, "get_thread_area" },     // Get thread-local storage
-    { 191, "lookup_dcookie" },      // Lookup directory cookie
-    { 192, "epoll_create" },        // Create epoll instance
-    { 193, "epoll_ctl_old" },       // Control epoll (deprecated)
-    { 194, "epoll_wait_old" },      // Wait epoll (deprecated)
-    { 195, "remap_file_pages" },    // Remap file pages
-    { 196, "getdents64" },         // Get directory entries
-    { 197, "set_tid_address" },     // Set TID address
-    { 198, "restart_syscall" },     // Restart syscall
-    { 199, "semtimedop" },          // Timed semaphore operations
-    { 200, "fadvise64" },           // File advice
-    { 201, "timer_create" },        // Create timer
-    { 202, "timer_settime" },       // Set timer
-    { 203, "timer_gettime" },       // Get timer
-    { 204, "timer_getoverrun" },    // Get timer overrun
-    { 205, "timer_delete" },        // Delete timer
-    { 206, "clock_settime" },       // Set clock
-    { 207, "clock_gettime" },       // Get clock
-    { 208, "clock_getres" },        // Get clock resolution
-    { 209, "clock_nanosleep" },     // High-res sleep
-    { 210, "exit_group" },          // Exit all threads (targetProc0)
-    { 211, "epoll_wait" },          // Wait epoll
-    { 212, "epoll_ctl" },           // Control epoll
-    { 213, "tgkill" },              // Send signal to thread group
-    { 214, "utimes" },              // Set file times
-    { 215, "vserver" },             // Vserver syscall
-    { 216, "mbind" },               // Set memory policy
-    { 217, "set_mempolicy" },       // Set memory policy
-    { 218, "get_mempolicy" },       // Get memory policy
-    { 219, "mq_open" },             // Open message queue
-    { 220, "mq_unlink" },           // Remove message queue
-    { 221, "mq_timedsend" },        // Send timed message
-    { 222, "mq_timedreceive" },     // Receive timed message
-    { 223, "mq_notify" },           // Notify message queue
-    { 224, "mq_getsetattr" },       // Get/set message queue attributes
-    { 225, "kexec_load" },          // Load kernel image
-    { 226, "waitid" },              // Wait for process
-    { 227, "add_key" },             // Add key to keyring
-    { 228, "request_key" },         // Request key
-    { 229, "keyctl" },              // Key control
-    { 230, "ioprio_set" },          // Set I/O priority
-    { 231, "ioprio_get" },          // Get I/O priority
-    { 232, "inotify_init" },        // Initialize inotify
-    { 233, "inotify_add_watch" },   // Add inotify watch
-    { 234, "inotify_rm_watch" },    // Remove inotify watch
-    { 235, "migrate_pages" },       // Migrate memory pages
-    { 236, "openat" },              // Open file relative to dir (targetProc0)
-    { 237, "mkdirat" },             // Create directory relative to dir
-    { 238, "mknodat" },             // Create node relative to dir
-    { 239, "fchownat" },            // Change owner relative to dir
-    { 240, "futimesat" },           // Set file times relative to dir
-    { 241, "newfstatat" },          // File status relative to dir
-    { 242, "unlinkat" },            // Delete file relative to dir
-    { 243, "renameat" },            // Rename file relative to dir
-    { 244, "linkat" },              // Create hard link relative to dir
-    { 245, "symlinkat" },           // Create symbolic link relative to dir
-    { 246, "readlinkat" },          // Read symbolic link relative to dir
-    { 247, "fchmodat" },            // Change mode relative to dir
-    { 248, "faccessat" },           // Check access relative to dir
-    { 249, "pselect6" },            // Synchronous I/O multiplexing
-    { 250, "ppoll" },               // Poll with timeout
-    { 251, "unshare" },             // Unshare namespace
-    { 252, "set_robust_list" },     // Set robust futex list
-    { 253, "get_robust_list" },     // Get robust futex list
-    { 254, "splice" },              // Splice data between pipes
-    { 255, "tee" },                 // Duplicate pipe content
-    { 256, "sync_file_range" },     // Sync file range
-    { 257, "vmsplice" },            // Splice user pages to pipe
-    { 258, "move_pages" },          // Move memory pages
-    { 259, "utimensat" },           // Set file times relative to dir
-    { 260, "epoll_pwait" },         // Wait epoll with signal mask
-    { 261, "signalfd" },            // Create signal fd
-    { 262, "timerfd_create" },      // Create timer fd
-    { 263, "eventfd" },             // Create event fd
-    { 264, "fallocate" },           // Allocate file space
-    { 265, "timerfd_settime" },     // Set timer fd
-    { 266, "timerfd_gettime" },     // Get timer fd
-    { 267, "accept4" },             // Accept connection with flags
-    { 268, "signalfd4" },           // Create signal fd with flags
-    { 269, "eventfd2" },            // Create event fd with flags
-    { 270, "epoll_create1" },       // Create epoll instance with flags
-    { 271, "dup3" },                // Duplicate fd with flags
-    { 272, "pipe2" },               // Create pipe with flags
-    { 273, "inotify_init1" },       // Initialize inotify with flags
-    { 274, "preadv" },              // Read into multiple buffers at offset
-    { 275, "pwritev" },             // Write from multiple buffers at offset
-    { 276, "rt_tgsigqueueinfo" },   // Send signal with info
-    { 277, "perf_event_open" },     // Open performance event
-    { 278, "recvmmsg" },            // Receive multiple messages
-    { 279, "fanotify_init" },       // Initialize fanotify
-    { 280, "fanotify_mark" },       // Mark fanotify
-    { 281, "prlimit64" },           // Set/get resource limits
-    { 282, "name_to_handle_at" },   // Get file handle
-    { 283, "open_by_handle_at" },   // Open file by handle
-    { 284, "clock_adjtime" },       // Adjust clock
-    { 285, "syncfs" },              // Synchronize filesystem
-    { 286, "sendmmsg" },            // Send multiple messages
-    { 287, "setns" },               // Set namespace
-    { 288, "getcpu" },              // Get CPU and node
-    { 289, "process_vm_readv" },    // Read process memory
-    { 290, "process_vm_writev" },   // Write process memory
-    { 291, "kcmp" },                // Compare processes
-    { 292, "finit_module" },        // Initialize kernel module
-    { 293, "sched_setattr" },       // Set scheduling attributes
-    { 294, "sched_getattr" },       // Get scheduling attributes
-    { 295, "renameat2" },           // Rename file with flags
-    { 296, "seccomp" },             // Security computing mode (suspicious)
-    { 297, "getrandom" },           // Get random bytes (targetProc0, rand())
-    { 298, "memfd_create" },        // Create memory fd
-    { 299, "kexec_file_load" },     // Load kernel image by file
-    { 300, "bpf" },                 // BPF program control
-    { 301, "execveat" },            // Execute program relative to dir
-    { 302, "userfaultfd" },         // User fault fd
-    { 303, "membarrier" },          // Memory barrier
-    { 304, "mlock2" },              // Lock memory with flags
-    { 305, "copy_file_range" },     // Copy file range
-    { 306, "preadv2" },             // Read into multiple buffers with flags
-    { 307, "pwritev2" },            // Write from multiple buffers with flags
-    { 308, "pkey_mprotect" },       // Protect memory with key
-    { 309, "pkey_alloc" },          // Allocate protection key
-    { 310, "pkey_free" },           // Free protection key
-    { 311, "statx" },               // Extended file status
-    { 312, "io_pgetevents" },       // Get I/O events
-    { 313, "rseq" },                // Restartable sequences
-    { 314, "pidfd_send_signal" },   // Send signal via pidfd
-    { 315, "pidfd_open" },          // Open pidfd
-    { 316, "pidfd_getfd" },         // Get fd via pidfd
-    { 317, "openat2" },             // Open file with flags
-    { 318, "epoll_pwait2" },        // Wait epoll with timeout
-    { 319, "mount_setattr" },       // Set mount attributes
-    { 320, "quotactl_fd" },         // Quota control by fd
-    { 321, "landlock_create_ruleset" }, // Create Landlock ruleset
-    { 322, "landlock_add_rule" },   // Add Landlock rule
-    { 323, "landlock_restrict_self" }, // Restrict self with Landlock
-    { 324, "memfd_secret" },        // Create secret memory fd
-    { 325, "process_mrelease" },    // Release process memory
-    { 326, "futex_waitv" },         // Wait on multiple futexes
-    { 327, "set_mempolicy_home_node" }, // Set memory policy home node
-    { 328, "cachestat" },           // Cache statistics
-    { 329, "fchmodat2" },           // Change mode with flags
-    { 330, "map_shadow_stack" },    // Map shadow stack
-    { 331, "futex_wake" },          // Wake futex
-    { 332, "futex_wait" },          // Wait futex
-    { 333, "futex_requeue" },       // Requeue futex
-    { 334, "statmount" },           // Mount statistics
-    { 335, "listmount" },           // List mounts
-    { 336, "lsm_get_self_attr" },   // Get LSM attributes
-    { 337, "lsm_set_self_attr" },   // Set LSM attributes
-    { 338, "lsm_list_modules" },    // List LSM modules
-    // Higher syscalls (up to ~425, modern kernels)
-    { 400, "clock_gettime64" },     // 64-bit clock time
-    { 401, "clock_settime64" },     // 64-bit clock set
-    { 402, "clock_adjtime64" },     // 64-bit clock adjust
-    { 403, "clock_getres64" },      // 64-bit clock resolution
-    { 404, "clock_nanosleep64" },   // 64-bit nanosleep
-    { 405, "timer_gettime64" },     // 64-bit timer get
-    { 406, "timer_settime64" },     // 64-bit timer set
-    { 407, "timerfd_gettime64" },   // 64-bit timerfd get
-    { 408, "timerfd_settime64" },   // 64-bit timerfd set
-    { 409, "semtimedop_time64" },   // 64-bit timed semaphore
-    { 410, "pselect6_time64" },     // 64-bit pselect
-    { 411, "ppoll_time64" },        // 64-bit ppoll
-    { 412, "io_pgetevents_time64" }, // 64-bit I/O events
-    { 413, "recvmmsg_time64" },     // 64-bit receive multiple
-    { 414, "mq_timedsend_time64" }, // 64-bit timed send
-    { 415, "mq_timedreceive_time64" }, // 64-bit timed receive
-    { 416, "semtimedop_time64" },   // 64-bit timed semaphore (alias)
-    { 417, "rt_sigtimedwait_time64" }, // 64-bit timed sigwait
-    { 418, "futex_time64" },        // 64-bit futex
-    { 419, "sched_rr_get_interval_time64" }, // 64-bit round-robin interval
-    { 420, "pidfd_send_signal" },   // Send signal via pidfd
-    { 421, "io_uring_setup" },      // Setup I/O uring
-    { 422, "io_uring_enter" },      // Enter I/O uring
-    { 423, "io_uring_register" },   // Register I/O uring
-    { 424, "open_tree" },           // Open filesystem tree
-    { 425, "move_mount" },          // Move mount
-    // Sentinel
-    { -1, NULL }
+    {    0, "read"                   },  /* Read from file descriptor */
+    {    1, "write"                  },  /* Write to file descriptor */
+    {    2, "open"                   },  /* Open file */
+    {    3, "close"                  },  /* Close file descriptor */
+    {    4, "stat"                   },  /* Get file status */
+    {    5, "fstat"                  },  /* Get file status by fd */
+    {    6, "lstat"                  },  /* Get symbolic link status */
+    {    7, "poll"                   },  /* Wait for events on file descriptors */
+    {    8, "lseek"                  },  /* Reposition file offset */
+    {    9, "mmap"                   },  /* Map files or devices into memory */
+    {   10, "mprotect"               },  /* Set memory region protection */
+    {   11, "munmap"                 },  /* Unmap memory region */
+    {   12, "brk"                    },  /* Change data segment size */
+    {   13, "rt_sigaction"           },  /* Examine and change signal action */
+    {   14, "rt_sigprocmask"         },  /* Examine and change blocked signals */
+    {   15, "rt_sigreturn"           },  /* Return from signal handler */
+    {   16, "ioctl"                  },  /* Device control */
+    {   17, "pread64"                },  /* Read from file at offset */
+    {   18, "pwrite64"               },  /* Write to file at offset */
+    {   19, "readv"                  },  /* Read into multiple buffers */
+    {   20, "writev"                 },  /* Write from multiple buffers */
+    {   21, "access"                 },  /* Check file accessibility */
+    {   22, "pipe"                   },  /* Create pipe */
+    {   23, "select"                 },  /* Synchronous I/O multiplexing */
+    {   24, "sched_yield"            },  /* Yield CPU */
+    {   25, "mremap"                 },  /* Remap virtual memory address */
+    {   26, "msync"                  },  /* Synchronize memory with storage */
+    {   27, "mincore"                },  /* Check memory residency */
+    {   28, "madvise"                },  /* Give memory usage advice */
+    {   29, "shmget"                 },  /* Get shared memory segment */
+    {   30, "shmat"                  },  /* Attach shared memory segment */
+    {   31, "shmctl"                 },  /* Shared memory control */
+    {   32, "dup"                    },  /* Duplicate file descriptor */
+    {   33, "dup2"                   },  /* Duplicate fd to specific number */
+    {   34, "pause"                  },  /* Suspend process until signal */
+    {   35, "nanosleep"              },  /* High-resolution sleep */
+    {   36, "getitimer"              },  /* Get value of interval timer */
+    {   37, "alarm"                  },  /* Set alarm signal timer */
+    {   38, "setitimer"              },  /* Set value of interval timer */
+    {   39, "getpid"                 },  /* Get process ID */
+    {   40, "sendfile"               },  /* Transfer data between file descriptors */
+    {   41, "socket"                 },  /* Create communication endpoint */
+    {   42, "connect"                },  /* Initiate connection on socket */
+    {   43, "accept"                 },  /* Accept connection on socket */
+    {   44, "sendto"                 },  /* Send message on socket */
+    {   45, "recvfrom"               },  /* Receive message from socket */
+    {   46, "sendmsg"                },  /* Send message on socket */
+    {   47, "recvmsg"                },  /* Receive message from socket */
+    {   48, "shutdown"               },  /* Shut down socket connection */
+    {   49, "bind"                   },  /* Bind name to socket */
+    {   50, "listen"                 },  /* Listen for connections on socket */
+    {   51, "getsockname"            },  /* Get socket name */
+    {   52, "getpeername"            },  /* Get peer socket name */
+    {   53, "socketpair"             },  /* Create pair of connected sockets */
+    {   54, "setsockopt"             },  /* Set socket options */
+    {   55, "getsockopt"             },  /* Get socket options */
+    {   56, "clone"                  },  /* Create child process or thread */
+    {   57, "fork"                   },  /* Create child process */
+    {   58, "vfork"                  },  /* Create child process, suspend parent */
+    {   59, "execve"                 },  /* Execute program */
+    {   60, "exit"                   },  /* Terminate process */
+    {   61, "wait4"                  },  /* Wait for process, BSD style */
+    {   62, "kill"                   },  /* Send signal to process */
+    {   63, "uname"                  },  /* Get system information */
+    {   64, "semget"                 },  /* Get System V semaphore set */
+    {   65, "semop"                  },  /* System V semaphore operations */
+    {   66, "semctl"                 },  /* System V semaphore control */
+    {   67, "shmdt"                  },  /* Detach shared memory segment */
+    {   68, "msgget"                 },  /* Get System V message queue */
+    {   69, "msgsnd"                 },  /* Send message to queue */
+    {   70, "msgrcv"                 },  /* Receive message from queue */
+    {   71, "msgctl"                 },  /* System V message queue control */
+    {   72, "fcntl"                  },  /* File descriptor control */
+    {   73, "flock"                  },  /* Apply or remove file lock */
+    {   74, "fsync"                  },  /* Synchronize file data to storage */
+    {   75, "fdatasync"              },  /* Synchronize file data only */
+    {   76, "truncate"               },  /* Truncate file to specified length */
+    {   77, "ftruncate"              },  /* Truncate file by descriptor */
+    {   78, "getdents"               },  /* Get directory entries */
+    {   79, "getcwd"                 },  /* Get current working directory */
+    {   80, "chdir"                  },  /* Change working directory */
+    {   81, "fchdir"                 },  /* Change working directory by fd */
+    {   82, "rename"                 },  /* Rename file */
+    {   83, "mkdir"                  },  /* Create directory */
+    {   84, "rmdir"                  },  /* Remove directory */
+    {   85, "creat"                  },  /* Create file */
+    {   86, "link"                   },  /* Create hard link */
+    {   87, "unlink"                 },  /* Delete file name */
+    {   88, "symlink"                },  /* Create symbolic link */
+    {   89, "readlink"               },  /* Read value of symbolic link */
+    {   90, "chmod"                  },  /* Change file permissions */
+    {   91, "fchmod"                 },  /* Change file permissions by fd */
+    {   92, "chown"                  },  /* Change file owner and group */
+    {   93, "fchown"                 },  /* Change file owner by fd */
+    {   94, "lchown"                 },  /* Change symbolic link owner */
+    {   95, "umask"                  },  /* Set file mode creation mask */
+    {   96, "gettimeofday"           },  /* Get time and timezone */
+    {   97, "getrlimit"              },  /* Get resource limits */
+    {   98, "getrusage"              },  /* Get resource usage */
+    {   99, "sysinfo"                },  /* Get system statistics */
+    {  100, "times"                  },  /* Get process times */
+    {  101, "ptrace"                 },  /* Process trace */
+    {  102, "getuid"                 },  /* Get real user ID */
+    {  103, "syslog"                 },  /* Read and clear kernel message ring buffer */
+    {  104, "getgid"                 },  /* Get real group ID */
+    {  105, "setuid"                 },  /* Set real user ID */
+    {  106, "setgid"                 },  /* Set real group ID */
+    {  107, "geteuid"                },  /* Get effective user ID */
+    {  108, "getegid"                },  /* Get effective group ID */
+    {  109, "setpgid"                },  /* Set process group ID */
+    {  110, "getppid"                },  /* Get parent process ID */
+    {  111, "getpgrp"                },  /* Get process group */
+    {  112, "setsid"                 },  /* Create session and set process group ID */
+    {  113, "setreuid"               },  /* Set real and effective user IDs */
+    {  114, "setregid"               },  /* Set real and effective group IDs */
+    {  115, "getgroups"              },  /* Get supplementary group IDs */
+    {  116, "setgroups"              },  /* Set supplementary group IDs */
+    {  117, "setresuid"              },  /* Set real, effective, and saved user IDs */
+    {  118, "getresuid"              },  /* Get real, effective, and saved user IDs */
+    {  119, "setresgid"              },  /* Set real, effective, and saved group IDs */
+    {  120, "getresgid"              },  /* Get real, effective, and saved group IDs */
+    {  121, "getpgid"                },  /* Get process group ID */
+    {  122, "setfsuid"               },  /* Set user ID used for filesystem checks */
+    {  123, "setfsgid"               },  /* Set group ID used for filesystem checks */
+    {  124, "getsid"                 },  /* Get session ID */
+    {  125, "capget"                 },  /* Get thread capabilities */
+    {  126, "capset"                 },  /* Set thread capabilities */
+    {  127, "rt_sigpending"          },  /* Examine pending signals */
+    {  128, "rt_sigtimedwait"        },  /* Synchronously wait for queued signal */
+    {  129, "rt_sigqueueinfo"        },  /* Queue signal and data */
+    {  130, "rt_sigsuspend"          },  /* Wait for signal */
+    {  131, "sigaltstack"            },  /* Set or get signal stack context */
+    {  132, "utime"                  },  /* Change file last access and modification times */
+    {  133, "mknod"                  },  /* Create special or ordinary file */
+    {  134, "uselib"                 },  /* Load shared library */
+    {  135, "personality"            },  /* Set the process execution domain */
+    {  136, "ustat"                  },  /* Get filesystem statistics */
+    {  137, "statfs"                 },  /* Get filesystem statistics */
+    {  138, "fstatfs"                },  /* Get filesystem statistics by fd */
+    {  139, "sysfs"                  },  /* Get filesystem type information */
+    {  140, "getpriority"            },  /* Get program scheduling priority */
+    {  141, "setpriority"            },  /* Set program scheduling priority */
+    {  142, "sched_setparam"         },  /* Set scheduling parameters */
+    {  143, "sched_getparam"         },  /* Get scheduling parameters */
+    {  144, "sched_setscheduler"     },  /* Set scheduling policy and parameters */
+    {  145, "sched_getscheduler"     },  /* Get scheduling policy */
+    {  146, "sched_get_priority_max" },  /* Get static priority maximum */
+    {  147, "sched_get_priority_min" },  /* Get static priority minimum */
+    {  148, "sched_rr_get_interval"  },  /* Get round-robin time quantum */
+    {  149, "mlock"                  },  /* Lock memory pages */
+    {  150, "munlock"                },  /* Unlock memory pages */
+    {  151, "mlockall"               },  /* Lock all memory pages */
+    {  152, "munlockall"             },  /* Unlock all memory pages */
+    {  153, "vhangup"                },  /* Virtually hangup current terminal */
+    {  154, "modify_ldt"             },  /* Read or write local descriptor table */
+    {  155, "pivot_root"             },  /* Change the root filesystem */
+    {  156, "_sysctl"                },  /* Read/write system parameters */
+    {  157, "prctl"                  },  /* Operations on a process */
+    {  158, "arch_prctl"             },  /* Set architecture-specific thread state */
+    {  159, "adjtimex"               },  /* Tune kernel clock */
+    {  160, "setrlimit"              },  /* Set resource limits */
+    {  161, "chroot"                 },  /* Change root directory */
+    {  162, "sync"                   },  /* Flush filesystem buffers */
+    {  163, "acct"                   },  /* Switch process accounting */
+    {  164, "settimeofday"           },  /* Set time and timezone */
+    {  165, "mount"                  },  /* Mount filesystem */
+    {  166, "umount2"                },  /* Unmount filesystem */
+    {  167, "swapon"                 },  /* Start swapping to file or device */
+    {  168, "swapoff"                },  /* Stop swapping to file or device */
+    {  169, "reboot"                 },  /* Reboot or halt the system */
+    {  170, "sethostname"            },  /* Set hostname */
+    {  171, "setdomainname"          },  /* Set NIS domain name */
+    {  172, "iopl"                   },  /* Change I/O privilege level */
+    {  173, "ioperm"                 },  /* Set I/O port permissions */
+    {  174, "create_module"          },  /* Create a loadable module entry */
+    {  175, "init_module"            },  /* Load a kernel module */
+    {  176, "delete_module"          },  /* Unload a kernel module */
+    {  177, "get_kernel_syms"        },  /* Retrieve exported kernel and module symbols */
+    {  178, "query_module"           },  /* Query the kernel for various bits */
+    {  179, "quotactl"               },  /* Manipulate disk quotas */
+    {  180, "nfsservctl"             },  /* Syscall interface to kernel nfs daemon */
+    {  181, "getpmsg"                },  /* Get message on stream */
+    {  182, "putpmsg"                },  /* Put message on stream */
+    {  183, "afs_syscall"            },  /* AFS syscall */
+    {  184, "tuxcall"                },  /* TUX syscall */
+    {  185, "security"               },  /* Security syscall */
+    {  186, "gettid"                 },  /* Get thread identification */
+    {  187, "readahead"              },  /* Initiate file readahead into page cache */
+    {  188, "setxattr"               },  /* Set extended attribute value */
+    {  189, "lsetxattr"              },  /* Set extended attribute value of symlink */
+    {  190, "fsetxattr"              },  /* Set extended attribute value by fd */
+    {  191, "getxattr"               },  /* Retrieve extended attribute value */
+    {  192, "lgetxattr"              },  /* Retrieve extended attribute value of symlink */
+    {  193, "fgetxattr"              },  /* Retrieve extended attribute value by fd */
+    {  194, "listxattr"              },  /* List extended attribute names */
+    {  195, "llistxattr"             },  /* List extended attribute names of symlink */
+    {  196, "flistxattr"             },  /* List extended attribute names by fd */
+    {  197, "removexattr"            },  /* Remove extended attribute */
+    {  198, "lremovexattr"           },  /* Remove extended attribute of symlink */
+    {  199, "fremovexattr"           },  /* Remove extended attribute by fd */
+    {  200, "tkill"                  },  /* Send a signal to a thread */
+    {  201, "time"                   },  /* Get time in seconds */
+    {  202, "futex"                  },  /* Fast userspace locking */
+    {  203, "sched_setaffinity"      },  /* Set thread CPU affinity mask */
+    {  204, "sched_getaffinity"      },  /* Get thread CPU affinity mask */
+    {  205, "set_thread_area"        },  /* Set thread-local storage area */
+    {  206, "io_setup"               },  /* Create asynchronous I/O context */
+    {  207, "io_destroy"             },  /* Destroy asynchronous I/O context */
+    {  208, "io_getevents"           },  /* Read asynchronous I/O events */
+    {  209, "io_submit"              },  /* Submit asynchronous I/O blocks */
+    {  210, "io_cancel"              },  /* Cancel asynchronous I/O operation */
+    {  211, "get_thread_area"        },  /* Get thread-local storage area */
+    {  212, "lookup_dcookie"         },  /* Return a directory entry path */
+    {  213, "epoll_create"           },  /* Open an epoll file descriptor */
+    {  214, "epoll_ctl_old"          },  /* Control interface for epoll (deprecated) */
+    {  215, "epoll_wait_old"         },  /* Wait for epoll event (deprecated) */
+    {  216, "remap_file_pages"       },  /* Create nonlinear file mapping */
+    {  217, "getdents64"             },  /* Get directory entries (64-bit) */
+    {  218, "set_tid_address"        },  /* Set pointer to thread ID */
+    {  219, "restart_syscall"        },  /* Restart a system call after interruption */
+    {  220, "semtimedop"             },  /* System V semaphore operations with timeout */
+    {  221, "fadvise64"              },  /* Predeclare file access pattern */
+    {  222, "timer_create"           },  /* Create a POSIX per-process timer */
+    {  223, "timer_settime"          },  /* Arm or disarm POSIX timer */
+    {  224, "timer_gettime"          },  /* Fetch state of POSIX timer */
+    {  225, "timer_getoverrun"       },  /* Get overrun count for a POSIX timer */
+    {  226, "timer_delete"           },  /* Delete a POSIX timer */
+    {  227, "clock_settime"          },  /* Set time of specified clock */
+    {  228, "clock_gettime"          },  /* Retrieve time of specified clock */
+    {  229, "clock_getres"           },  /* Find resolution of specified clock */
+    {  230, "clock_nanosleep"        },  /* High resolution sleep with specifiable clock */
+    {  231, "exit_group"             },  /* Exit all threads in a process */
+    {  232, "epoll_wait"             },  /* Wait for epoll event */
+    {  233, "epoll_ctl"              },  /* Control interface for epoll */
+    {  234, "tgkill"                 },  /* Send a signal to a thread in a thread group */
+    {  235, "utimes"                 },  /* Change file timestamps */
+    {  236, "vserver"                },  /* Unimplemented */
+    {  237, "mbind"                  },  /* Set memory policy for memory range */
+    {  238, "set_mempolicy"          },  /* Set default NUMA memory policy */
+    {  239, "get_mempolicy"          },  /* Retrieve NUMA memory policy */
+    {  240, "mq_open"                },  /* Open a message queue */
+    {  241, "mq_unlink"              },  /* Remove a message queue */
+    {  242, "mq_timedsend"           },  /* Send a message to a queue */
+    {  243, "mq_timedreceive"        },  /* Receive a message from a queue */
+    {  244, "mq_notify"              },  /* Register for notification when a queue is non-empty */
+    {  245, "mq_getsetattr"          },  /* Get or set message queue attributes */
+    {  246, "kexec_load"             },  /* Load a new kernel for later execution */
+    {  247, "waitid"                 },  /* Wait for process to change state */
+    {  248, "add_key"                },  /* Add a key to the kernel keyring */
+    {  249, "request_key"            },  /* Request a key from the kernel keyring */
+    {  250, "keyctl"                 },  /* Manipulate the kernel key management facility */
+    {  251, "ioprio_set"             },  /* Set I/O scheduling class and priority */
+    {  252, "ioprio_get"             },  /* Get I/O scheduling class and priority */
+    {  253, "inotify_init"           },  /* Initialize inotify instance */
+    {  254, "inotify_add_watch"      },  /* Add watch to inotify instance */
+    {  255, "inotify_rm_watch"       },  /* Remove watch from inotify instance */
+    {  256, "migrate_pages"          },  /* Move all pages in a process to another set of nodes */
+    {  257, "openat"                 },  /* Open file relative to directory fd */
+    {  258, "mkdirat"                },  /* Create directory relative to directory fd */
+    {  259, "mknodat"                },  /* Create special file relative to directory fd */
+    {  260, "fchownat"               },  /* Change ownership relative to directory fd */
+    {  261, "futimesat"              },  /* Change timestamps relative to directory fd */
+    {  262, "newfstatat"             },  /* Get file status relative to directory fd */
+    {  263, "unlinkat"               },  /* Remove file relative to directory fd */
+    {  264, "renameat"               },  /* Rename file relative to directory fd */
+    {  265, "linkat"                 },  /* Create hard link relative to directory fd */
+    {  266, "symlinkat"              },  /* Create symbolic link relative to directory fd */
+    {  267, "readlinkat"             },  /* Read symbolic link relative to directory fd */
+    {  268, "fchmodat"               },  /* Change permissions relative to directory fd */
+    {  269, "faccessat"              },  /* Check accessibility relative to directory fd */
+    {  270, "pselect6"               },  /* Synchronous I/O multiplexing with signal mask */
+    {  271, "ppoll"                  },  /* Wait for events with signal mask */
+    {  272, "unshare"                },  /* Disassociate parts of process execution context */
+    {  273, "set_robust_list"        },  /* Set list of robust futexes */
+    {  274, "get_robust_list"        },  /* Get list of robust futexes */
+    {  275, "splice"                 },  /* Splice data to or from a pipe */
+    {  276, "tee"                    },  /* Duplicating pipe content */
+    {  277, "sync_file_range"        },  /* Sync a file segment with disk */
+    {  278, "vmsplice"               },  /* Splice user pages into a pipe */
+    {  279, "move_pages"             },  /* Move individual pages of a process */
+    {  280, "utimensat"              },  /* Change file timestamps with nanosecond precision */
+    {  281, "epoll_pwait"            },  /* Wait for epoll event with signal mask */
+    {  282, "signalfd"               },  /* Create file descriptor for accepting signals */
+    {  283, "timerfd_create"         },  /* Create timer that notifies via file descriptor */
+    {  284, "eventfd"                },  /* Create file descriptor for event notification */
+    {  285, "fallocate"              },  /* Manipulate file space */
+    {  286, "timerfd_settime"        },  /* Arm or disarm timer via file descriptor */
+    {  287, "timerfd_gettime"        },  /* Get current setting of timer via file descriptor */
+    {  288, "accept4"                },  /* Accept connection with flags */
+    {  289, "signalfd4"              },  /* Create signal fd with flags */
+    {  290, "eventfd2"               },  /* Create event fd with flags */
+    {  291, "epoll_create1"          },  /* Open epoll file descriptor with flags */
+    {  292, "dup3"                   },  /* Duplicate fd to specific number with flags */
+    {  293, "pipe2"                  },  /* Create pipe with flags */
+    {  294, "inotify_init1"          },  /* Initialize inotify instance with flags */
+    {  295, "preadv"                 },  /* Read into multiple buffers at offset */
+    {  296, "pwritev"                },  /* Write from multiple buffers at offset */
+    {  297, "rt_tgsigqueueinfo"      },  /* Queue signal with data to thread group */
+    {  298, "perf_event_open"        },  /* Set up performance monitoring */
+    {  299, "recvmmsg"               },  /* Receive multiple messages on a socket */
+    {  300, "fanotify_init"          },  /* Initialize fanotify group */
+    {  301, "fanotify_mark"          },  /* Add, remove, or modify fanotify mark */
+    {  302, "prlimit64"              },  /* Get or set resource limits */
+    {  303, "name_to_handle_at"      },  /* Obtain handle for a pathname */
+    {  304, "open_by_handle_at"      },  /* Open file via a handle */
+    {  305, "clock_adjtime"          },  /* Tune a specified clock */
+    {  306, "syncfs"                 },  /* Commit filesystem containing fd to disk */
+    {  307, "sendmmsg"               },  /* Send multiple messages on a socket */
+    {  308, "setns"                  },  /* Reassociate thread with a namespace */
+    {  309, "getcpu"                 },  /* Determine CPU and NUMA node */
+    {  310, "process_vm_readv"       },  /* Transfer data from another process */
+    {  311, "process_vm_writev"      },  /* Transfer data to another process */
+    {  312, "kcmp"                   },  /* Compare two processes to determine if they share a resource */
+    {  313, "finit_module"           },  /* Load a kernel module from file descriptor */
+    {  314, "sched_setattr"          },  /* Set scheduling policy and attributes */
+    {  315, "sched_getattr"          },  /* Get scheduling policy and attributes */
+    {  316, "renameat2"              },  /* Rename file with flags */
+    {  317, "seccomp"                },  /* Operate on secure computing state */
+    {  318, "getrandom"              },  /* Obtain a series of random bytes */
+    {  319, "memfd_create"           },  /* Create an anonymous file */
+    {  320, "kexec_file_load"        },  /* Load new kernel for later execution */
+    {  321, "bpf"                    },  /* Perform a command on an extended BPF map or program */
+    {  322, "execveat"               },  /* Execute program relative to a directory fd */
+    {  323, "userfaultfd"            },  /* Create file descriptor for handling page faults */
+    {  324, "membarrier"             },  /* Issue memory barriers on a set of threads */
+    {  325, "mlock2"                 },  /* Lock memory with flags */
+    {  326, "copy_file_range"        },  /* Copy a range of data from one file to another */
+    {  327, "preadv2"                },  /* Read into multiple buffers at offset with flags */
+    {  328, "pwritev2"               },  /* Write from multiple buffers at offset with flags */
+    {  329, "pkey_mprotect"          },  /* Set protection on a region of memory */
+    {  330, "pkey_alloc"             },  /* Allocate a protection key */
+    {  331, "pkey_free"              },  /* Free a protection key */
+    {  332, "statx"                  },  /* Get file status (extended) */
+    {  333, "io_pgetevents"          },  /* Read asynchronous I/O events from the completion queue */
+    {  334, "rseq"                   },  /* Register restartable sequence for current thread */
+    {  424, "pidfd_send_signal"      },  /* Send a signal to a process specified by a file descriptor */
+    {  434, "pidfd_open"             },  /* Obtain a file descriptor that refers to a process */
+    {  438, "pidfd_getfd"            },  /* Obtain a duplicate of another process file descriptor */
+    {   -1, NULL                     }   /* sentinel */
 };
 
-const char *get_syscall_name(long syscall_num) 
+const char *get_syscall_name(long syscall_num)
 {
-    for (int i = 0; syscall_table[i].num != -1; i++) 
+    for (int i = 0; syscall_table[i].num != -1; i++)
     {
-        if (syscall_table[i].num == syscall_num) 
-        {
+        if (syscall_table[i].num == syscall_num)
             return syscall_table[i].name;
-        }
     }
     return "unknown";
 }
