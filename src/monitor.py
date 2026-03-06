@@ -1,32 +1,34 @@
 #!/usr/bin/env python3
 """
-monitor.py - Scrutiny behavioral analysis engine
+monitor.py - Scrutiny behavioral analysis and anomaly detection engine
 
-Phase 2: Added syscall risk scoring with weighted severity tiers.
-Anomaly detection now produces a threat score in addition to
-presence/frequency analysis.
+Phase 6: Full CLI mode, JSON baseline library, auto-diff, presentation output.
+
+Usage:
+  python3 monitor.py                          # interactive (tkinter file picker)
+  python3 monitor.py --baseline <jsonl>       # save as named baseline
+  python3 monitor.py --compare <jsonl>        # auto-diff against stored baseline
+  python3 monitor.py --compare <jsonl> --baseline-file <jsonl>  # explicit diff
+  python3 monitor.py --list-baselines         # show stored baselines
+  python3 monitor.py --summary <jsonl>        # single-file summary only
 
 Risk Tiers:
-  CRITICAL (10): execve, connect, sendto, ptrace, init_module,
-                 finit_module, delete_module, kexec_load, bpf,
-                 process_vm_writev, kexec_file_load, execveat,
-                 sendmsg, sendmmsg
-  HIGH     ( 7): socket, access, chmod, fchmod, chown, fchown,
-                 kill, setuid, setgid, mount, chroot, pivot_root,
-                 capset, prctl, seccomp, umount2
-  MEDIUM   ( 3): open, openat, read, write, unlink, unlinkat,
-                 rename, fork, clone, vfork, bind, listen,
-                 accept, accept4
+  CRITICAL (10): execve, connect, sendto, ptrace, init_module, ...
+  HIGH     ( 7): socket, access, chmod, kill, setuid, mount, ...
+  MEDIUM   ( 3): open, openat, read, write, fork, clone, bind, ...
   LOW      ( 1): everything else
 
 Part of the Scrutiny project - HoneyBadger Vanguard fork.
-Inspired by the original work of CommonTongue-InfoSec.
-https://github.com/CommonTongue-InfoSec/Scrutiny
 """
 
 import os
 import re
+import sys
+import json
+import argparse
+import datetime
 from collections import Counter
+from pathlib import Path
 
 try:
     import tkinter as tk
@@ -35,13 +37,48 @@ try:
 except ImportError:
     TKINTER_AVAILABLE = False
 
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+SCRIPT_DIR    = Path(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT     = SCRIPT_DIR.parent
+LOGS_DIR      = REPO_ROOT / 'logs'
+BASELINE_DIR  = LOGS_DIR / 'baselines'
+BASELINE_JSON = BASELINE_DIR / 'baseline_library.json'
+
+# ---------------------------------------------------------------------------
+# ANSI color helpers (degrade gracefully on Windows without colorama)
+# ---------------------------------------------------------------------------
+def _supports_color():
+    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+COLOR = _supports_color()
+
+def red(s):    return f"\033[91m{s}\033[0m" if COLOR else s
+def yellow(s): return f"\033[93m{s}\033[0m" if COLOR else s
+def cyan(s):   return f"\033[96m{s}\033[0m" if COLOR else s
+def green(s):  return f"\033[92m{s}\033[0m" if COLOR else s
+def bold(s):   return f"\033[1m{s}\033[0m"  if COLOR else s
+def gray(s):   return f"\033[90m{s}\033[0m" if COLOR else s
+
+TIER_COLOR = {
+    'CRITICAL': red,
+    'HIGH':     yellow,
+    'MEDIUM':   cyan,
+    'LOW':      gray,
+}
+
+TIER_TAG = {
+    'CRITICAL': '[!!!]',
+    'HIGH':     '[ ! ]',
+    'MEDIUM':   '[ ~ ]',
+    'LOW':      '[   ]',
+}
 
 # ---------------------------------------------------------------------------
 # Syscall risk scoring table
-# Keyed by syscall name -> (tier_label, score)
 # ---------------------------------------------------------------------------
 RISK_TABLE = {
-    # CRITICAL - direct execution, kernel manipulation, network exfil
     'execve':            ('CRITICAL', 10),
     'execveat':          ('CRITICAL', 10),
     'connect':           ('CRITICAL', 10),
@@ -57,7 +94,6 @@ RISK_TABLE = {
     'bpf':               ('CRITICAL', 10),
     'process_vm_writev': ('CRITICAL', 10),
 
-    # HIGH - privilege changes, suspicious file ops, process signaling
     'socket':            ('HIGH', 7),
     'access':            ('HIGH', 7),
     'faccessat':         ('HIGH', 7),
@@ -87,7 +123,6 @@ RISK_TABLE = {
     'prctl':             ('HIGH', 7),
     'seccomp':           ('HIGH', 7),
 
-    # MEDIUM - file I/O, process creation, deletion
     'open':              ('MEDIUM', 3),
     'openat':            ('MEDIUM', 3),
     'openat2':           ('MEDIUM', 3),
@@ -108,7 +143,6 @@ RISK_TABLE = {
 }
 
 # Authoritative Linux x86_64 syscall number -> name mapping
-# Mirrors the corrected syscalls.c table
 SYSCALL_NAMES = {
     0: 'read',          1: 'write',         2: 'open',
     3: 'close',         4: 'stat',          5: 'fstat',
@@ -227,209 +261,463 @@ SYSCALL_NAMES = {
     438: 'pidfd_getfd',
 }
 
-
-def get_syscall_name(syscall_num):
-    return SYSCALL_NAMES.get(syscall_num, f'unknown({syscall_num})')
-
+# ---------------------------------------------------------------------------
+# Core data functions
+# ---------------------------------------------------------------------------
 
 def get_risk(syscall_name):
-    """Return (tier_label, score) for a syscall name."""
     return RISK_TABLE.get(syscall_name, ('LOW', 1))
 
 
-def select_file(prompt, initial_dir=None):
-    if TKINTER_AVAILABLE:
-        root = tk.Tk()
-        root.withdraw()
-        file_path = filedialog.askopenfilename(
-            title=prompt,
-            initialdir=initial_dir if initial_dir and os.path.isdir(initial_dir)
-                       else os.getcwd()
-        )
-        root.destroy()
-        return file_path if file_path else None
-    else:
-        while True:
-            file_path = input(f"{prompt} (enter path): ").strip()
-            if os.path.isfile(file_path):
-                return file_path
-            print(f"Error: '{file_path}' not found. Try again.")
-
-
-def parse_syscall_log(file_path):
-    """Parse a baseliner log and return Counter of syscall numbers."""
-    syscall_pattern = r"Syscall: (\d+) \("
-    syscalls = []
+def parse_jsonl(path):
+    """Parse a .jsonl log file. Returns list of event dicts."""
+    events = []
     try:
-        with open(file_path, 'r') as f:
+        with open(path, 'r') as f:
             for line in f:
-                match = re.search(syscall_pattern, line)
-                if match:
-                    syscalls.append(int(match.group(1)))
-        return Counter(syscalls)
+                line = line.strip()
+                if line:
+                    try:
+                        events.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
     except Exception as e:
-        print(f"Error reading {file_path}: {e}")
-        return Counter()
+        print(f"Error reading {path}: {e}", file=sys.stderr)
+    return events
 
 
-def compute_threat_score(syscall_counts):
-    """
-    Compute weighted threat score for a log.
-    Returns: (total_score, tier_event_counts, tier_score_totals)
-    """
+def parse_log(path):
+    """Parse a .log file (legacy plaintext). Returns Counter of syscall nums."""
+    syscall_pattern = r"Syscall: (\d+) \("
+    counts = Counter()
+    try:
+        with open(path, 'r') as f:
+            for line in f:
+                m = re.search(syscall_pattern, line)
+                if m:
+                    counts[int(m.group(1))] += 1
+    except Exception as e:
+        print(f"Error reading {path}: {e}", file=sys.stderr)
+    return counts
+
+
+def events_to_counts(events):
+    """Convert event list to Counter keyed by syscall_name."""
+    counts = Counter()
+    for e in events:
+        name = e.get('syscall_name', 'unknown')
+        counts[name] += 1
+    return counts
+
+
+def compute_threat_score(name_counts):
+    """Compute weighted threat score from name-keyed Counter."""
     total_score = 0
     tier_counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
     tier_scores = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
-
-    for syscall_num, count in syscall_counts.items():
-        name = get_syscall_name(syscall_num)
+    for name, count in name_counts.items():
         tier, score = get_risk(name)
         weighted = count * score
         total_score += weighted
         tier_counts[tier] += count
         tier_scores[tier] += weighted
-
     return total_score, tier_counts, tier_scores
 
 
-def compare_syscalls(baseline_counts, target_counts):
+def compare_runs(baseline_counts, target_counts):
     """
-    Compare baseline vs target.
-    Returns list of anomalies sorted by risk score descending.
-    Each entry: (syscall_num, name, tier, score, description)
+    Compare baseline vs target (both name-keyed Counters).
+    Returns list of anomaly dicts sorted by risk score descending.
     """
     anomalies = []
-    all_syscalls = set(baseline_counts.keys()) | set(target_counts.keys())
-    total_baseline = sum(baseline_counts.values()) or 1
-    total_target   = sum(target_counts.values()) or 1
+    total_b = sum(baseline_counts.values()) or 1
+    total_t = sum(target_counts.values()) or 1
+    all_names = set(baseline_counts) | set(target_counts)
 
-    for syscall_num in sorted(all_syscalls):
-        b_count = baseline_counts.get(syscall_num, 0)
-        t_count = target_counts.get(syscall_num, 0)
-        b_freq  = b_count / total_baseline
-        t_freq  = t_count / total_target
-        name    = get_syscall_name(syscall_num)
+    for name in sorted(all_names):
+        b = baseline_counts.get(name, 0)
+        t = target_counts.get(name, 0)
+        b_freq = b / total_b
+        t_freq = t / total_t
         tier, score = get_risk(name)
 
-        if b_count == 0 and t_count > 0:
-            anomalies.append((
-                syscall_num, name, tier, score,
-                f"NEW in target ({t_count}x, absent in baseline)"
-            ))
-        elif b_freq > 0 and t_freq > 2 * b_freq and t_count > 1:
+        if b == 0 and t > 0:
+            anomalies.append({
+                'syscall': name, 'tier': tier, 'score': score,
+                'type': 'NEW',
+                'desc': f"NEW in target ({t}x, absent in baseline)",
+                'baseline_count': b, 'target_count': t,
+            })
+        elif b_freq > 0 and t_freq > 2 * b_freq and t > 1:
             ratio = t_freq / b_freq
-            anomalies.append((
-                syscall_num, name, tier, score,
-                f"FREQUENCY spike {ratio:.1f}x baseline "
-                f"(baseline={b_count}, target={t_count})"
-            ))
+            anomalies.append({
+                'syscall': name, 'tier': tier, 'score': score,
+                'type': 'SPIKE',
+                'desc': f"FREQUENCY spike {ratio:.1f}x (baseline={b}, target={t})",
+                'baseline_count': b, 'target_count': t,
+            })
 
-    anomalies.sort(key=lambda x: x[3], reverse=True)
+    anomalies.sort(key=lambda x: x['score'], reverse=True)
     return anomalies
 
 
-def print_summary(counts, label):
-    """Print syscall frequency summary with risk annotation."""
+# ---------------------------------------------------------------------------
+# Baseline library (JSON store)
+# ---------------------------------------------------------------------------
+
+def load_library():
+    if BASELINE_JSON.exists():
+        try:
+            with open(BASELINE_JSON) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_library(lib):
+    BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(BASELINE_JSON, 'w') as f:
+        json.dump(lib, f, indent=2)
+
+
+def store_baseline(target_name, jsonl_path):
+    """Parse a JSONL and store its syscall counts as a named baseline."""
+    events = parse_jsonl(jsonl_path)
+    if not events:
+        print(f"ERROR: No events parsed from {jsonl_path}", file=sys.stderr)
+        return False
+    counts = events_to_counts(events)
+    lib = load_library()
+    ts = datetime.datetime.now().isoformat(timespec='seconds')
+    lib[target_name] = {
+        'stored_at': ts,
+        'source': str(jsonl_path),
+        'total_events': len(events),
+        'syscall_counts': dict(counts),
+    }
+    save_library(lib)
+    print(green(f"[+] Baseline '{target_name}' stored ({len(events)} events, {ts})"))
+    return True
+
+
+def load_baseline_counts(target_name):
+    """Return name-keyed Counter for a stored baseline, or None."""
+    lib = load_library()
+    entry = lib.get(target_name)
+    if not entry:
+        return None
+    return Counter(entry['syscall_counts'])
+
+
+def list_baselines():
+    lib = load_library()
+    if not lib:
+        print("No baselines stored.")
+        return
     SEP = '=' * 62
     print(f"\n{SEP}")
-    print(f"  {label}")
+    print(bold("  Stored Baselines"))
+    print(SEP)
+    for name, entry in lib.items():
+        print(f"  {bold(name)}")
+        print(f"    Stored : {entry.get('stored_at','?')}")
+        print(f"    Events : {entry.get('total_events','?')}")
+        print(f"    Source : {entry.get('source','?')}")
     print(SEP)
 
-    total = sum(counts.values()) or 1
-    total_score, tier_counts, tier_scores = compute_threat_score(counts)
 
-    print(f"  Total syscall events : {total:,}")
-    print(f"  Threat score         : {total_score:,}")
-    print(f"  Tier breakdown       : "
-          f"CRITICAL={tier_counts['CRITICAL']}  "
-          f"HIGH={tier_counts['HIGH']}  "
-          f"MEDIUM={tier_counts['MEDIUM']}  "
-          f"LOW={tier_counts['LOW']}")
-    print(f"\n  {'Syscall':<26} {'Count':>6}  {'Freq':>7}  {'Tier':<10} {'Pts':>5}")
-    print(f"  {'-'*58}")
+# ---------------------------------------------------------------------------
+# Display functions
+# ---------------------------------------------------------------------------
+SEP62 = '=' * 62
+SEP62d = '-' * 62
 
-    for num, count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
-        name = get_syscall_name(num)
+def print_banner():
+    print(f"\n{bold(SEP62)}")
+    print(bold("  Scrutiny Monitor - Behavioral Analysis Engine"))
+    print(bold("  HoneyBadger Vanguard - Phase 6"))
+    print(bold(SEP62))
+
+
+def print_summary(name_counts, label):
+    total = sum(name_counts.values()) or 1
+    total_score, tier_counts, tier_scores = compute_threat_score(name_counts)
+
+    print(f"\n{SEP62}")
+    print(bold(f"  {label}"))
+    print(SEP62)
+    print(f"  Total events  : {bold(str(total)):>8}")
+    print(f"  Threat score  : {bold(str(total_score)):>8}")
+    print(f"  Tier counts   : "
+          f"{red('CRIT='+ str(tier_counts['CRITICAL']))}  "
+          f"{yellow('HIGH='+ str(tier_counts['HIGH']))}  "
+          f"{cyan('MED='+ str(tier_counts['MEDIUM']))}  "
+          f"{gray('LOW='+ str(tier_counts['LOW']))}")
+    print(f"\n  {bold('Syscall'):<28} {'Count':>6}  {'Freq':>7}  {'Tier':<10} {'Pts':>5}")
+    print(f"  {SEP62d}")
+
+    for name, count in sorted(name_counts.items(), key=lambda x: x[1], reverse=True)[:25]:
         tier, score = get_risk(name)
         freq = count / total
-        print(f"  {name:<26} {count:>6}  {freq:>7.4f}  {tier:<10} {score:>5}")
+        col = TIER_COLOR.get(tier, lambda x: x)
+        print(f"  {col(f'{name:<26}')}  {count:>6}  {freq:>7.4f}  {tier:<10} {score:>5}")
+
+    if len(name_counts) > 25:
+        print(f"  {gray(f'... and {len(name_counts)-25} more syscalls')}")
 
 
-def print_analysis(anomalies, baseline_score, target_score):
-    """Print final anomaly report with threat scores."""
-    SEP = '=' * 62
-    print(f"\n{SEP}")
-    print(f"  ANOMALY ANALYSIS")
-    print(SEP)
+def print_anomalies(anomalies, baseline_score, target_score, baseline_label, target_label):
+    print(f"\n{SEP62}")
+    print(bold("  ANOMALY ANALYSIS"))
+    print(SEP62)
+    print(f"  Baseline : {baseline_label}")
+    print(f"  Target   : {target_label}")
     print(f"  Baseline threat score : {baseline_score:,}")
     print(f"  Target threat score   : {target_score:,}")
 
     delta = target_score - baseline_score
     pct   = (delta / baseline_score * 100) if baseline_score > 0 else 0
-    print(f"  Delta                 : {delta:+,} ({pct:+.1f}%)")
+    delta_str = f"{delta:+,} ({pct:+.1f}%)"
+    delta_col = red(delta_str) if delta > 0 else green(delta_str)
+    print(f"  Delta                 : {delta_col}")
 
     if not anomalies:
-        print("\n  [CLEAN] No significant anomalies detected.")
+        print(f"\n  {green('[CLEAN]')} No significant anomalies detected.")
+        print(SEP62)
         return
 
-    print(f"\n  {len(anomalies)} anomalies detected (sorted by risk):\n")
-    print(f"  {'#':<4} {'Tier':<6} {'Score':>5}  {'Syscall':<24}  Description")
-    print(f"  {'-'*68}")
+    crit_anomalies = [a for a in anomalies if a['tier'] == 'CRITICAL']
+    print(f"\n  {red(bold(str(len(anomalies)) + ' anomalies detected'))}  "
+          f"({red(str(len(crit_anomalies)) + ' CRITICAL')})\n")
+    print(f"  {'#':<4} {'Tag':<6} {'Score':>5}  {'Syscall':<24}  Description")
+    print(f"  {SEP62d}")
 
-    TIER_TAG = {
-        'CRITICAL': '[!!!]',
-        'HIGH':     '[ ! ]',
-        'MEDIUM':   '[ ~ ]',
-        'LOW':      '[   ]',
-    }
+    for i, a in enumerate(anomalies, 1):
+        tag = TIER_TAG.get(a['tier'], '     ')
+        col = TIER_COLOR.get(a['tier'], lambda x: x)
+        print(f"  {i:<4} {col(tag)} {a['score']:>5}  {col(a['syscall']+'  '):<26}  {a['desc']}")
 
-    for i, (num, name, tier, score, desc) in enumerate(anomalies, 1):
-        tag = TIER_TAG.get(tier, '     ')
-        print(f"  {i:<4} {tag} {score:>5}  {name:<24}  {desc}")
+    print(f"\n{SEP62}")
 
+    # VERDICT
+    if crit_anomalies:
+        print(red(bold("  VERDICT: SUSPICIOUS BEHAVIOR DETECTED")))
+        print(red(f"  {len(crit_anomalies)} CRITICAL syscall anomalies present."))
+        for a in crit_anomalies:
+            print(red(f"    [!!!] {a['syscall']}: {a['desc']}"))
+    else:
+        print(yellow("  VERDICT: ELEVATED ACTIVITY - review recommended"))
+    print(SEP62)
+
+
+# ---------------------------------------------------------------------------
+# File selection helpers
+# ---------------------------------------------------------------------------
+
+def select_file_gui(prompt, initial_dir=None):
+    if not TKINTER_AVAILABLE:
+        return None
+    root = tk.Tk()
+    root.withdraw()
+    path = filedialog.askopenfilename(
+        title=prompt,
+        initialdir=str(initial_dir) if initial_dir and initial_dir.is_dir()
+                   else str(REPO_ROOT),
+        filetypes=[("Log files", "*.jsonl *.log"), ("All files", "*.*")]
+    )
+    root.destroy()
+    return Path(path) if path else None
+
+
+def select_file_cli(prompt, initial_dir=None):
+    print(f"\n{prompt}")
+    if initial_dir and initial_dir.is_dir():
+        # List recent files as a menu
+        files = sorted(initial_dir.glob('**/*.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)[:10]
+        if files:
+            print("  Recent files:")
+            for i, f in enumerate(files, 1):
+                print(f"  {i:>2}. {f.relative_to(REPO_ROOT)}")
+            print("   0. Enter path manually")
+            choice = input("  Select [1-10 or 0]: ").strip()
+            try:
+                idx = int(choice)
+                if 1 <= idx <= len(files):
+                    return files[idx - 1]
+            except ValueError:
+                pass
+    path = input("  Enter full path: ").strip()
+    p = Path(path)
+    return p if p.exists() else None
+
+
+# ---------------------------------------------------------------------------
+# Main modes
+# ---------------------------------------------------------------------------
+
+def mode_summary(jsonl_path):
+    print_banner()
+    events = parse_jsonl(jsonl_path)
+    if not events:
+        print(f"ERROR: No events in {jsonl_path}", file=sys.stderr)
+        sys.exit(1)
+    counts = events_to_counts(events)
+    print_summary(counts, f"SUMMARY: {Path(jsonl_path).name}")
+    print()
+
+
+def mode_store_baseline(jsonl_path, target_name):
+    print_banner()
+    if not target_name:
+        target_name = Path(jsonl_path).parent.parent.name  # infer from path
+    print(f"[*] Storing baseline for '{target_name}' from:\n    {jsonl_path}")
+    store_baseline(target_name, jsonl_path)
+
+
+def mode_compare(target_jsonl, baseline_name=None, baseline_jsonl=None):
+    print_banner()
+
+    # Load target
+    target_events = parse_jsonl(target_jsonl)
+    if not target_events:
+        print(f"ERROR: No events in {target_jsonl}", file=sys.stderr)
+        sys.exit(1)
+    target_counts = events_to_counts(target_events)
+
+    # Infer process name from events for baseline lookup
+    proc_names = set(e.get('process','') for e in target_events)
+    inferred_name = next(iter(proc_names), None)
+
+    # Load baseline
+    baseline_counts = None
+    baseline_label  = None
+
+    if baseline_jsonl:
+        b_events = parse_jsonl(baseline_jsonl)
+        if not b_events:
+            print(f"ERROR: No events in baseline {baseline_jsonl}", file=sys.stderr)
+            sys.exit(1)
+        baseline_counts = events_to_counts(b_events)
+        baseline_label  = Path(baseline_jsonl).name
+    elif baseline_name:
+        baseline_counts = load_baseline_counts(baseline_name)
+        baseline_label  = f"stored baseline '{baseline_name}'"
+        if baseline_counts is None:
+            print(f"ERROR: No stored baseline named '{baseline_name}'", file=sys.stderr)
+            print("Run with --list-baselines to see available baselines.")
+            sys.exit(1)
+    elif inferred_name:
+        baseline_counts = load_baseline_counts(inferred_name)
+        baseline_label  = f"stored baseline '{inferred_name}'"
+        if baseline_counts is None:
+            print(f"No stored baseline for '{inferred_name}'.")
+            print(f"Run: python3 monitor.py --save-baseline <jsonl> --target {inferred_name}")
+            sys.exit(1)
+    else:
+        print("ERROR: Cannot determine baseline. Use --baseline-name or --baseline-file")
+        sys.exit(1)
+
+    target_label  = Path(target_jsonl).name
+    b_score, _, _ = compute_threat_score(baseline_counts)
+    t_score, _, _ = compute_threat_score(target_counts)
+
+    print_summary(baseline_counts, f"BASELINE: {baseline_label}")
+    print_summary(target_counts,   f"TARGET:   {target_label}")
+
+    anomalies = compare_runs(baseline_counts, target_counts)
+    print_anomalies(anomalies, b_score, t_score, baseline_label, target_label)
+    print()
+
+
+def mode_interactive():
+    print_banner()
+    logs_dir = LOGS_DIR if LOGS_DIR.is_dir() else None
+
+    print("\n[1/2] Select BASELINE log...")
+    if TKINTER_AVAILABLE:
+        baseline_path = select_file_gui("Select BASELINE log", logs_dir)
+    else:
+        baseline_path = select_file_cli("Select BASELINE log", logs_dir)
+    if not baseline_path:
+        print("No baseline selected."); return
+
+    print("[2/2] Select TARGET log...")
+    if TKINTER_AVAILABLE:
+        target_path = select_file_gui("Select TARGET log", logs_dir)
+    else:
+        target_path = select_file_cli("Select TARGET log", logs_dir)
+    if not target_path:
+        print("No target selected."); return
+
+    # Detect JSONL vs plaintext
+    if str(baseline_path).endswith('.jsonl'):
+        b_events = parse_jsonl(baseline_path)
+        baseline_counts = events_to_counts(b_events)
+    else:
+        num_counts = parse_log(baseline_path)
+        baseline_counts = Counter({SYSCALL_NAMES.get(k, f'unknown({k})'): v for k, v in num_counts.items()})
+
+    if str(target_path).endswith('.jsonl'):
+        t_events = parse_jsonl(target_path)
+        target_counts = events_to_counts(t_events)
+    else:
+        num_counts = parse_log(target_path)
+        target_counts = Counter({SYSCALL_NAMES.get(k, f'unknown({k})'): v for k, v in num_counts.items()})
+
+    if not baseline_counts or not target_counts:
+        print("ERROR: One or both files empty/unreadable."); return
+
+    b_score, _, _ = compute_threat_score(baseline_counts)
+    t_score, _, _ = compute_threat_score(target_counts)
+
+    print_summary(baseline_counts, f"BASELINE: {baseline_path.name}")
+    print_summary(target_counts,   f"TARGET:   {target_path.name}")
+
+    anomalies = compare_runs(baseline_counts, target_counts)
+    print_anomalies(anomalies, b_score, t_score, baseline_path.name, target_path.name)
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    logs_dir   = os.path.abspath(os.path.join(script_dir, '..', 'logs'))
-    if not os.path.isdir(logs_dir):
-        print(f"Warning: logs dir '{logs_dir}' not found; opening from cwd.")
-        logs_dir = None
+    parser = argparse.ArgumentParser(
+        description='Scrutiny Monitor - Behavioral Analysis Engine',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 monitor.py                                       # interactive mode
+  python3 monitor.py --summary logs/targetProc2/json/x.jsonl
+  python3 monitor.py --save-baseline logs/.../x.jsonl --target targetProc0
+  python3 monitor.py --compare logs/.../x.jsonl           # auto-detect baseline
+  python3 monitor.py --compare logs/.../x.jsonl --baseline-name targetProc0
+  python3 monitor.py --compare logs/.../x.jsonl --baseline-file logs/.../b.jsonl
+  python3 monitor.py --list-baselines
+        """
+    )
+    parser.add_argument('--summary',        metavar='JSONL',  help='Print summary for a single JSONL file')
+    parser.add_argument('--save-baseline',  metavar='JSONL',  help='Store a JSONL as a named baseline')
+    parser.add_argument('--target',         metavar='NAME',   help='Target name for --save-baseline')
+    parser.add_argument('--compare',        metavar='JSONL',  help='Compare a JSONL against a baseline')
+    parser.add_argument('--baseline-name',  metavar='NAME',   help='Stored baseline name for --compare')
+    parser.add_argument('--baseline-file',  metavar='JSONL',  help='Explicit baseline JSONL for --compare')
+    parser.add_argument('--list-baselines', action='store_true', help='List stored baselines')
 
-    print("=" * 62)
-    print("  Scrutiny Monitor v2.0 - Risk-Scored Behavioral Analysis")
-    print("=" * 62)
+    args = parser.parse_args()
 
-    print("\nSelect the BASELINE syscall log file...")
-    baseline_file = select_file("Select baseline log", initial_dir=logs_dir)
-    if not baseline_file:
-        print("No baseline file selected. Exiting.")
-        return
-
-    print("Select the TARGET syscall log file...")
-    target_file = select_file("Select target log", initial_dir=logs_dir)
-    if not target_file:
-        print("No target file selected. Exiting.")
-        return
-
-    baseline_counts = parse_syscall_log(baseline_file)
-    target_counts   = parse_syscall_log(target_file)
-
-    if not baseline_counts:
-        print("Baseline log is empty or unreadable.")
-        return
-    if not target_counts:
-        print("Target log is empty or unreadable.")
-        return
-
-    print_summary(baseline_counts, f"BASELINE: {os.path.basename(baseline_file)}")
-    print_summary(target_counts,   f"TARGET:   {os.path.basename(target_file)}")
-
-    baseline_score, _, _ = compute_threat_score(baseline_counts)
-    target_score,   _, _ = compute_threat_score(target_counts)
-
-    anomalies = compare_syscalls(baseline_counts, target_counts)
-    print_analysis(anomalies, baseline_score, target_score)
-    print()
+    if args.list_baselines:
+        list_baselines()
+    elif args.summary:
+        mode_summary(args.summary)
+    elif args.save_baseline:
+        mode_store_baseline(args.save_baseline, args.target)
+    elif args.compare:
+        mode_compare(args.compare, args.baseline_name, args.baseline_file)
+    else:
+        mode_interactive()
 
 
 if __name__ == '__main__':
