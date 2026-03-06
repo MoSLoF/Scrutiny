@@ -21,18 +21,18 @@ This fork extends the project with additional threat simulation targets, structu
 ┌─────────────────────────────────────────────────────────┐
 │                      Scrutiny                           │
 │                                                         │
-│  baseliner.c   ← ptrace syscall tracer (runs as root)  │
-│  syscalls.c    ← x86_64 syscall lookup table (0–425)   │
-│  utils.c       ← /proc/<pid>/comm process name helper  │
+│  baseliner.c   ← ptrace syscall tracer (runs as root)   │
+│  syscalls.c    ← x86_64 syscall lookup table (0–425)    │
+│  utils.c       ← /proc/<pid>/comm process name helper   │
 │                                                         │
-│  targetProc0   ← Clean baseline: file I/O, PID checks  │
-│  targetProc1   ← Dirty: access("/etc/shadow") at t=30  │
-│  targetProc2   ← Network threat sim (3-stage)          │
+│  targetProc0   ← Clean baseline: file I/O, PID checks   │
+│  targetProc1   ← Dirty: access("/etc/shadow") at t=30   │
+│  targetProc2   ← Network threat sim (3-stage)           │
 │    Stage 1 (t=20): DNS beacon / C2 hostname resolution  │
-│    Stage 2 (t=40): TCP connect to external IP          │
-│    Stage 3 (t=60): UDP exfil send                      │
+│    Stage 2 (t=40): TCP connect to external IP           │
+│    Stage 3 (t=60): UDP exfil send                       │
 │                                                         │
-│  monitor.py    ← Frequency-diff anomaly analysis (GUI) │
+│  monitor.py    ← Frequency-diff anomaly analysis (GUI)  │
 └─────────────────────────────────────────────────────────┘
 ```
 
