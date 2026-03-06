@@ -9,3 +9,7 @@ employees.txt
 
 # Repo tooling (not part of the project itself)
 Scrutiny-GitSetup.ps1
+
+employees.txt
+payroll.log
+logs/in*

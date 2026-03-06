@@ -16,3 +16,4 @@ Makefile text eol=lf
 *.exe   binary
 
 *.xml text eol=lf
+*.ps1  text eol=crlf
